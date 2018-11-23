@@ -1,0 +1,5 @@
+Data/
+Embeddings/
+*.pyc
+Results/
+__pycache__
