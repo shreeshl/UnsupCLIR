@@ -4,6 +4,7 @@ import string
 import numpy as np
 import unicodedata
 import nltk
+from scipy.spatial.distance import cosine
 # from nltk.tokenize import WhitespaceTokenizer as Tokenizer
 # # from nltk.tokenize import WordPunctTokenizer as Tokenizer
 # from nltk.tokenize.moses import MosesTokenizer as Tokenizer
@@ -116,7 +117,7 @@ def text2vec_bigram(text, language='', dim=300):
     return document_vector, [], [], 0
 
 
-def text2vec_idf_sum(text, language='', dim=300):
+def text2vec_idf_sum(text, query = None, language='', dim=300):
     """
     This function is used used only as a symbol (for a unified interface). The idf-scaling
     occurs in the caller: create_text_representations
@@ -125,10 +126,21 @@ def text2vec_idf_sum(text, language='', dim=300):
     :param dim: dimensionality of word embeddings
     :return:
     """
-    return text2vec_sum(text, language=language, dim=dim)
+    return text2vec_sum(text, query = query, language=language, dim=dim)
 
+def cosineSim(sentence, query, language):
+    
+    a = np.zeros(300)
+    for w in sentence:
+        _, e = lookup(w, language)
+        if e is not None:
+            a += e
+    a /= np.linalg.norm(a)
+    # print(a.shape, query.shape)
+    # print(abs(np.dot(a, query)))
+    return abs(np.dot(a, query))
 
-def text2vec_sum(text, language='', dim=300):
+def text2vec_sum(text, query = None, language='', dim=300):
     """
     Transforms text into vector representation by embedding lookup on shared/bilingual embedding
     space. The text is represented as a sum of the word embeddings
@@ -138,8 +150,15 @@ def text2vec_sum(text, language='', dim=300):
     :return: unit vector of the sum
     """
     _id, txt = text
-    text = clean(txt)
+    if query is not None:
+        sentences = map(clean, txt.split("."))
+        scores = [cosineSim(s, query, language) for s in sentences]
+        # scores.sort(key = lambda x : -x[1])
+        avg = sum(scores)/len(scores)
+        # print([s[1] for s in scores])
+        text = ". ".join(s for i, s in enumerate(sentences) if scores[i] > avg)
 
+    text = clean(txt)
     unknown_words = []
     word_vectors = []
     zero_vec = np.zeros(dim)
@@ -246,6 +265,46 @@ def create_text_representations(language, id_text, emb, method = text2vec_sum, p
     pool = Pool(processes=processes)
     partial_method = partial(method, language=language)
     results = pool.map(partial_method, id_text)
+    pool.close()
+    pool.join()
+    return np.array([result[0] for result in results], dtype=np.float32)
+
+def create_text_representations_2(query_array, language, id_text, emb, method = text2vec_sum, processes = 40, idf_weighing = False):
+    """
+    Runs a text2vec method in parallel to transform documents to document vectors. It
+    requires a global embedding variable to be created first.
+    :param language: used for the look-up table "embeddings"
+    :param id_text: (doc_id, document_tokens)
+    :param method: textvec variant
+    :param emb: embedding
+    :param processes: number processes to run in parallel
+    :param idf_weighing: whether to rescale word embeddings with the words idf
+    :return:
+    """
+    global embeddings
+    embeddings = emb
+    # print(len(query_array), query_array)
+    id_text = list(id_text)
+    if idf_weighing:
+        # We modify the embedding object and want to reuse the original one for subsequent experiments
+        embeddings = copy.deepcopy(emb)
+        # compute IDF weights
+        idf_weights = compute_idf_weights(id_text, language, processes)
+        print("idf weights computed")
+
+        for key in embeddings.lang_vocabularies[language].keys():
+            try:
+                idf = idf_weights[key]
+                old_embedding = embeddings.get_vector(lang=language, word=key)
+                rescaled_embedding = old_embedding * idf
+                embeddings.set_vector(lang=language, word=key, vector=rescaled_embedding)
+            except:
+                pass
+        print("old weights idf-rescaled")
+
+    pool = Pool(processes=processes)
+    partial_method = partial(method, language=language)
+    results = pool.starmap(partial_method, zip(id_text, query_array))
     pool.close()
     pool.join()
     return np.array([result[0] for result in results], dtype=np.float32)

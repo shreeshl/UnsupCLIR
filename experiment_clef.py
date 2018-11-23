@@ -22,7 +22,7 @@ from text2vec import tokenize
 from text2vec import text2vec_sum
 from text2vec import text2vec_bigram
 from text2vec import text2vec_idf_sum
-from text2vec import create_text_representations
+from text2vec import create_text_representations, create_text_representations_2
 from collection_extractors import extract_dutch
 from collection_extractors import extract_italian_sda9495
 from collection_extractors import extract_italian_lastampa
@@ -116,13 +116,15 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries,
     limit_reached = False
     for doc_dir, extractor in doc_dirs:
         if not limit_reached:
-            for file in next(os.walk(doc_dir))[2]:
-                tmp_doc_ids, tmp_documents = load_clef_documents(doc_dir + file, extractor, limit_documents)
-                documents.extend(tmp_documents)
-                doc_ids.extend(tmp_doc_ids)
-                if len(documents) == limit_documents:
-                    limit_reached = True
-                    break
+            for root, dirs, files in os.walk(doc_dir):
+                for file in files:
+                    if '.DS' in file : continue
+                    tmp_doc_ids, tmp_documents = load_clef_documents(os.path.join(root, file), extractor, limit_documents)
+                    documents.extend(tmp_documents)
+                    doc_ids.extend(tmp_doc_ids)
+                    if len(documents) == limit_documents:
+                        limit_reached = True
+                        break
     print("Documents loaded %s" % (timer.pprint_lap()))
     relass = load_relevance_assessments(relevance_assessment_file)
     print("Evaluation data loaded %s" % (timer.pprint_lap()))
@@ -163,6 +165,7 @@ def evaluate_clef(query_ids, doc_ids, relass, all_rankings):
     :param all_rankings: (actual) rankings retrieved
     :return:
     """
+    # print(query_ids, doc_ids, relass, all_rankings)
     average_precision = []
     rankings_with_doc_ids = []
     for j in range(len(query_ids)):
@@ -361,14 +364,18 @@ def run_experiment(aggregation_method, query_lang, doc_lang, experiment_data, in
     doc_ids, documents, query_ids, queries, relass = experiment_data
     embeddings = initialized_embeddings
 
-    doc_arry = create_text_representations(language=dlang_long, id_text=zip(doc_ids, documents),
-                                           emb=embeddings, processes=processes, method=aggregation_method,
-                                           idf_weighing=aggregation_method == text2vec_idf_sum)
     query_arry = create_text_representations(language=qlang_long, id_text=zip(query_ids, queries),
                                              emb=embeddings, processes=processes, method=aggregation_method,
                                              idf_weighing=False)  # Queries are not idf-scaled
+    #query_array : no_queries x dim(=300)
+    # doc_arry = create_text_representations(language=dlang_long, id_text=zip(doc_ids, documents),
+    #                                        emb=embeddings, processes=processes, method=aggregation_method,
+    #                                        idf_weighing=aggregation_method == text2vec_idf_sum)
+    doc_arry = create_text_representations_2(query_arry, language=dlang_long, id_text=zip(doc_ids, documents),
+                                           emb=embeddings, processes=processes, method=aggregation_method,
+                                           idf_weighing=aggregation_method == text2vec_idf_sum)
+    
     print("Query- and Document-Embeddings created %s" % (timer.pprint_lap()))
-
     # keep only documents for which we have a non-zero text embedding, i.e. for which at least one
     # word embedding could exists (filters out empty documents)
     doc_non_zero = np.all(doc_arry != 0, axis=1)
@@ -378,7 +385,6 @@ def run_experiment(aggregation_method, query_lang, doc_lang, experiment_data, in
     index, quantizer = create_index(doc_arry)
     D, I = index.search(query_arry, len(doc_arry))
     print("Retrieval done %s" % (timer.pprint_lap()))
-
     all_rankings, evaluation_result = evaluate_clef(query_ids=query_ids, doc_ids=doc_ids, relass=relass, all_rankings=I)
     return all_rankings, evaluation_result
 
@@ -408,13 +414,13 @@ def run(experiment, name, vspace, experiment_count, offset, results, csv_prefix)
 
 def main():
     process_count = c.PROCESS_COUNT  # number of cores
-    query_limit = None  # limit for testing/debugging,e.g. 10
-    doc_limit = None  # limit for testing/debugging, e.g. 100
+    query_limit = 5  # limit for testing/debugging,e.g. 10
+    doc_limit = 5  # limit for testing/debugging, e.g. 100
     emb_limit = 100000
     most_frequent_vocab = None
 
     # Prepare dutch CLEF data
-    nl_all = (c.PATH_BASE_DOCUMENTS + "dutch/all/", extract_dutch)
+    nl_all = (c.PATH_BASE_DOCUMENTS + "dutch/", extract_dutch)
     dutch = {"2001": [nl_all], "2002": [nl_all], "2003": [nl_all]}
 
     # Prepare italian CLEF data
@@ -457,7 +463,7 @@ def main():
             if year == "2001" and target_language[0] == 'fi':
                 continue
 
-            current_assessment_file = c.PATH_BASE_EVAL + year + "/qrels_" + target_language[1] + "_" + year
+            current_assessment_file = c.PATH_BASE_EVAL + year + "/qrels_" + target_language[1]
             current_path_documents = _all[target_language[1]][year]
             current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
 
@@ -475,7 +481,7 @@ def main():
                                       experiment_data=current_experiment_data,
                                       processes=process_count,
                                       most_common=most_frequent_vocab)
-            counter, csv_records = run(experiment, "UnigramLM", "None", counter, offset, csv_records, csv_prefix)
+            # counter, csv_records = run(experiment, "UnigramLM", "None", counter, offset, csv_records, csv_prefix)
 
             for vector_space in c.METHODs:
                 path_prefix = c.PATH_EMB_BASE + vector_space + "/" + lang_pair
@@ -506,12 +512,12 @@ def main():
                                                       experiment_data=current_experiment_data,
                                                       processes=process_count,
                                                       initialized_embeddings=word_embeddings)
-                counter, csv_records = run(experiment, "TbTQT", vector_space, counter, offset, csv_records, csv_prefix)
+                # counter, csv_records = run(experiment, "TbTQT", vector_space, counter, offset, csv_records, csv_prefix)
 
                 # Sum word embeddings, termed BWE-Agg-Add in paper
                 def experiment():
                     return run_configured_experiment(aggregation_method=text2vec_sum)
-                counter, csv_records = run(experiment, "Sum", vector_space, counter, offset, csv_records, csv_prefix)
+                # counter, csv_records = run(experiment, "Sum", vector_space, counter, offset, csv_records, csv_prefix)
 
                 # Sum of idf-weighted word embeddings (idf for documents only), termed BWE-Agg-IDF in paper
                 def experiment():
@@ -521,7 +527,7 @@ def main():
                 # bigram aggregation method by blunsom and hermann (http://www.aclweb.org/anthology/P14-1006)
                 def experiment():
                     return run_configured_experiment(aggregation_method=text2vec_bigram)
-                counter, csv_records = run(experiment, "Bigram", vector_space, counter, offset, csv_records, csv_prefix)
+                # counter, csv_records = run(experiment, "Bigram", vector_space, counter, offset, csv_records, csv_prefix)
 
             # Updates results.csv after all vector-spaces for a single lanugage pair and a single year have been run
             duration = timer.pprint_lap()

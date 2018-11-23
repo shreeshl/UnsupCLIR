@@ -1,6 +1,6 @@
 # Please specify project home dir, e.g. "/home/username/UnsupCLIR/"
 HOME = ""
-PROCESS_COUNT = 50
+PROCESS_COUNT = 4
 EMBEDDING_DIM = 300
 
 # Paths required for
@@ -14,10 +14,12 @@ RESULTS_DIR = HOME + "Results/"
 RESULTS_FILE = RESULTS_DIR + "results.csv"
 ENSEMBLE_RESULTS_FILE = RESULTS_DIR + "ensemble_results.csv"
 
-YEARs = ["2001", "2002", "2003"]
-METHODs = ["Conneau", "Smith", "Vulic"]  # notation in paper: ["CL-UNSUP", "CL-WT", "CD-CL"]
+YEARs = ["2001"]#, "2002", "2003"]
+# METHODs = ["Conneau", "Smith", "Vulic"]  # notation in paper: ["CL-UNSUP", "CL-WT", "CD-CL"]
+METHODs = ["Conneau"]  # notation in paper: ["CL-UNSUP", "CL-WT", "CD-CL"]
 LANGUAGEs = [("en", "english"), ("nl", "dutch"), ("it", "italian"), ("fi", "finnish")]
-LANGUAGE_PAIRS = [(LANGUAGEs[0], LANGUAGEs[1]), (LANGUAGEs[0], LANGUAGEs[2]), (LANGUAGEs[0], LANGUAGEs[3])]
+# LANGUAGE_PAIRS = [(LANGUAGEs[0], LANGUAGEs[1]), (LANGUAGEs[0], LANGUAGEs[2]), (LANGUAGEs[0], LANGUAGEs[3])]
+LANGUAGE_PAIRS = [(LANGUAGEs[0], LANGUAGEs[1])]
 LANGUAGE_PAIRS_SHORT = ["enit", "enfi", "ennl"]
 
 # Paths for running Europarl experiments (not part of the paper)

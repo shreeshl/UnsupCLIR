@@ -20,7 +20,7 @@ def run_ensemble(method_paths, relass, param_model_weights=None):
     """
     all_documents = set()
     method_count = len(method_paths)
-
+    print method_paths
     # if no weighting specified assign equal weights
     if param_model_weights is None:
         model_weights = [1.0 / method_count for _ in range(method_count)]
@@ -108,13 +108,13 @@ def main():
         for lang_pair in c.LANGUAGE_PAIRS_SHORT:
             # load relevance assesment files
             if lang_pair.endswith("it"):
-                relass_file = c.PATH_BASE_EVAL + year + "/qrels_italian_" + year
+                relass_file = c.PATH_BASE_EVAL + year + "/qrels_italian"
             elif lang_pair.endswith("fi"):
                 if int(year) == 2001:
                     continue  # 2001 campaign does not include finnish
-                relass_file = c.PATH_BASE_EVAL + year + "/qrels_finnish_" + year
+                relass_file = c.PATH_BASE_EVAL + year + "/qrels_finnish"
             elif lang_pair.endswith("nl"):
-                relass_file = c.PATH_BASE_EVAL + year + "/qrels_dutch_" + year
+                relass_file = c.PATH_BASE_EVAL + year + "/qrels_dutch"
             relevance_assessments = load_relevance_assessments(relass_file)
 
             # all combinations of vector space induction and aggregation method, e.g.
