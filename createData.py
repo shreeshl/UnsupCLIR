@@ -16,6 +16,9 @@ from text2vec import clean
 from load_data import load_clef_documents, load_queries
 
 def tokenize(doc):
+    """
+    naive tokenization based on whitespace
+    """
     return doc.split()
 
 def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, query_language = 'en'):
@@ -54,9 +57,7 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, que
 def compute_idf_weights(documents):
     """
     Returns a mapping { term: IDF_term }
-    :param text: list of documents in corpus
-    :param processes: paralellization parameter
-    :return:
+    :param documents: list of documents in corpus
     """
 
     collection_size = len(documents)
@@ -67,6 +68,12 @@ def compute_idf_weights(documents):
     return idf_mapping
 
 def compute_tf_weights(documents, processs = 1):
+    """
+    Returns a mapping { term: tf_term }
+    :param documents: list of documents in corpus
+    :param processes: parallelization parameter
+    """
+
     pool = Pool(processes=processs)
     document_distributions = pool.map(_count_words, documents)
     pool.close()
@@ -79,6 +86,13 @@ def compute_tf_weights(documents, processs = 1):
     return collection_distribution
 
 def sampleSent(doc, tfidf, k = 5):
+    """
+    Returns top k sentences based on tf-idf scoring
+    :param doc: given document
+    :tfidf : dict with tfidf score for each word
+    :k : no of sentences to be returned
+    """
+
     k = 5
     doc = doc.split(".")
     scores = []
@@ -90,6 +104,12 @@ def sampleSent(doc, tfidf, k = 5):
     return ". ".join(doc[i].strip() for _, i in scores[:k])
 
 def getTfidf(documents, processs = 4):
+    """
+    Returns tfidf score dictionary for each word
+    :param documents: list of documents in corpus
+    :param processes: parallelization parameter
+    """
+
     pool = Pool(processes=processs)
 
     # print("Start preprocessing data %s" % timer.pprint_lap())
@@ -106,6 +126,16 @@ def getTfidf(documents, processs = 4):
     return tfidf
 
 def getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount, sample = True):
+    """
+    Returns relevant and nonrelvant documents for the given query qid
+    :param qid : given query id
+    :param query2docs : dict between query and it's pseudo relevant documents
+    :param allDocs: all document ids in corpus
+    :param relDocsCount: no of relevant documents to return
+    :param nonRelDocsCount : no of non relevant documents to return
+    :param sample: sample relevant documents or return all of them
+    """
+
     if sample :
         relDocs = np.random.choice(query2docs[qid], min(relDocsCount, len(query2docs[qid])), replace = False)
     else:
