@@ -29,7 +29,6 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, que
     :param query_file: CLEF Topics (i.e., query) file
     :param limit_queries: for debugging purposes -> limit number of queries loaded
     :param query_language: language of queries
-    :param relevance_assessment_file: relevance assesment file
     :return:
     """
     if limit_documents is not None:
