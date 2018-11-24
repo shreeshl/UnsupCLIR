@@ -7,15 +7,49 @@ from itertools import repeat
 from itertools import chain
 from functools import partial
 from itertools import compress
-from collections import Counter
+from collections import Counter, defaultdict
 from multiprocessing.pool import Pool
-
+from collection_extractors import extract_italian_lastampa
 import constants as c
 from experiment_clef import _count_words
 from text2vec import clean
+from load_data import load_clef_documents, load_queries
 
 def tokenize(doc):
     return doc.split()
+
+def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, query_language = 'en'):
+    """
+    Loads documents, evaluation data and queries needed to run different experiments on CLEF data.
+    :param doc_dirs: directories containing the corpora for a specific CLEF campaign
+    :param limit_documents: for debugging purposes -> limit number of docs loaded
+    :param query_file: CLEF Topics (i.e., query) file
+    :param limit_queries: for debugging purposes -> limit number of queries loaded
+    :param query_language: language of queries
+    :param relevance_assessment_file: relevance assesment file
+    :return:
+    """
+    if limit_documents is not None:
+        limit_documents -= 1
+    documents = []
+    doc_ids = []
+    limit_reached = False
+    for doc_dir, extractor in doc_dirs:
+        if not limit_reached:
+            for root, dirs, files in os.walk(doc_dir):
+                for file in files:
+                    if '.DS' in file : continue
+                    tmp_doc_ids, tmp_documents = load_clef_documents(os.path.join(root, file), extractor, limit_documents)
+                    documents.extend(tmp_documents)
+                    doc_ids.extend(tmp_doc_ids)
+                    if len(documents) == limit_documents:
+                        limit_reached = True
+                        break
+
+    query_ids, queries = load_queries(query_file, language_tag=query_language, limit=limit_queries)
+    # print("Documents loaded %s" % (timer.pprint_lap()))
+    return doc_ids, documents, query_ids, queries
+
 
 def compute_idf_weights(documents):
     """
@@ -83,12 +117,24 @@ def getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount, sample = Tr
 
 if __name__ == '__main__':
     
+
+    # Prepare italian CLEF data
+    limit_documents = 1000
+    limit_queries = 10
+    year = "2001"
+    it_lastampa = (c.PATH_BASE_DOCUMENTS + "italian/la_stampa/", extract_italian_lastampa)
+    italian = {"2001": [it_lastampa]}
+
+    _all = {"italian": italian}
+
+    doc_dirs = _all["italian"][year]
+    current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
     np.random.seed(123)
     processs, k = 4, 10
-    documents = [] #list of documents
-    docid2doc = {} #list of docids
-    queries = []
-    qidtoq = {}
+    docids, documents, qids, queries = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
+    docid2doc = {d:i for i, d in enumerate(docids)}
+    qidtoq    = {str(q):i for i, q in enumerate(qids)}
+
     allDocs = set(docid2doc.keys())
     tfidf = getTfidf(documents, processs)
     pool = Pool(processes=processs)
@@ -98,17 +144,27 @@ if __name__ == '__main__':
     assert len(subsetDocs) == len(documents)
     # saveSubsetDocs()
     # loadSubSetDocs()
-    relDocsCount, nonRelDocsCount = 2, 2
+    relDocsCount, nonRelDocsCount = 3, 10
 
     query2docs = defaultdict(list)
+    with open("out", "r") as f:
+        for line in f:
+            line = line.split()
+            query2docs[line[0][-2:]].append(line[2])
+
+
     with open("data.tsv", "w") as f:
+        tsv_writer = csv.writer(f, delimiter='\t')
         for qid, i in qidtoq.items():
+            if qid not in query2docs :
+                print("No relevance judgements available for query %s"%(qid))
+                continue
             #add relevant documents
             relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
-            for docid in relDocs:
-                f.write("\t".join([str(1), qid, docid, queries[qidtoq[qid]], subsetDocs[docid2doc[docid]]] ))
+            for did in relDocs:
+                tsv_writer.writerow([str(1), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
 
             #add nonrelevant documents
-            for d in nonRelDocs:
-                f.write("\t".join([str(0), qid, docid, queries[qidtoq[qid]], subsetDocs[docid2doc[docid]]] ))
+            for did in nonRelDocs:
+                tsv_writer.writerow([str(0), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
     
