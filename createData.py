@@ -119,52 +119,54 @@ if __name__ == '__main__':
     
 
     # Prepare italian CLEF data
+    np.random.seed(123)
     limit_documents = 1000
     limit_queries = 10
-    year = "2001"
-    it_lastampa = (c.PATH_BASE_DOCUMENTS + "italian/la_stampa/", extract_italian_lastampa)
-    italian = {"2001": [it_lastampa]}
-
-    _all = {"italian": italian}
-
-    doc_dirs = _all["italian"][year]
-    current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
-    np.random.seed(123)
-    processs, k = 4, 10
-    docids, documents, qids, queries = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
-    docid2doc = {d:i for i, d in enumerate(docids)}
-    qidtoq    = {str(q):i for i, q in enumerate(qids)}
-
-    allDocs = set(docid2doc.keys())
-    tfidf = getTfidf(documents, processs)
-    pool = Pool(processes=processs)
-    subsetDocs = pool.starmap(sampleSent, zip(documents, repeat(tfidf), repeat(k)))
-    pool.close()
-    pool.join()
-    assert len(subsetDocs) == len(documents)
-    # saveSubsetDocs()
-    # loadSubSetDocs()
     relDocsCount, nonRelDocsCount = 3, 10
 
-    query2docs = defaultdict(list)
-    with open("out", "r") as f:
-        for line in f:
-            line = line.split()
-            query2docs[line[0][-2:]].append(line[2])
+    it_lastampa = (c.PATH_BASE_DOCUMENTS + "italian/la_stampa/", extract_italian_lastampa)
+    it_sda94 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian_94/", extract_italian_sda9495)
+    it_sda95 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian_95/", extract_italian_sda9495)
+    italian = {"2001": [it_lastampa, it_sda94],
+               "2002": [it_lastampa, it_sda94],
+               "2003": [it_lastampa, it_sda94, it_sda95]}
+
+    processs, k = 4, 10
 
 
-    with open("data.tsv", "w") as f:
-        tsv_writer = csv.writer(f, delimiter='\t')
-        for qid, i in qidtoq.items():
-            if qid not in query2docs :
-                print("No relevance judgements available for query %s"%(qid))
-                continue
-            #add relevant documents
-            relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
-            for did in relDocs:
-                tsv_writer.writerow([str(1), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
+    for year in c.YEARs:
+        doc_dirs = _all["italian"][year]
+        current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
+        docids, documents, qids, queries = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
+        docid2doc = {d:i for i, d in enumerate(docids)}
+        qidtoq    = {str(q):i for i, q in enumerate(qids)}
 
-            #add nonrelevant documents
-            for did in nonRelDocs:
-                tsv_writer.writerow([str(0), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
+        allDocs = set(docid2doc.keys())
+        tfidf = getTfidf(documents, processs)
+        pool = Pool(processes=processs)
+        subsetDocs = pool.starmap(sampleSent, zip(documents, repeat(tfidf), repeat(k)))
+        pool.close()
+        pool.join()
+        assert len(subsetDocs) == len(documents)
+
+        query2docs = defaultdict(list)
+        with open("out_%s"%year, "r") as f:
+            for line in f:
+                line = line.split()
+                query2docs[line[0][-2:]].append(line[2])
+
+        with open("data_%s.tsv"%year, "w") as f:
+            tsv_writer = csv.writer(f, delimiter='\t')
+            for qid, i in qidtoq.items():
+                if qid not in query2docs :
+                    print("No relevance judgements available for query %s"%(qid))
+                    continue
+                #add relevant documents
+                relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
+                for did in relDocs:
+                    tsv_writer.writerow([str(1), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
+
+                #add nonrelevant documents
+                for did in nonRelDocs:
+                    tsv_writer.writerow([str(0), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
     
