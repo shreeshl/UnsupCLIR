@@ -9,7 +9,7 @@ from functools import partial
 from itertools import compress
 from collections import Counter, defaultdict
 from multiprocessing.pool import Pool
-from collection_extractors import extract_italian_lastampa
+from collection_extractors import extract_italian_lastampa, extract_italian_sda9495
 import constants as c
 from experiment_clef import _count_words
 from text2vec import clean
@@ -44,7 +44,7 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, que
                     tmp_doc_ids, tmp_documents = load_clef_documents(os.path.join(root, file), extractor, limit_documents)
                     documents.extend(tmp_documents)
                     doc_ids.extend(tmp_doc_ids)
-                    if len(documents) == limit_documents:
+                    if limit_documents is not None and len(documents) == limit_documents:
                         limit_reached = True
                         break
 
@@ -52,6 +52,9 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, que
     # print("Documents loaded %s" % (timer.pprint_lap()))
     return doc_ids, documents, query_ids, queries
 
+def unique(document):
+
+    return list(set(document))
 
 def compute_idf_weights(documents):
     """
@@ -60,13 +63,16 @@ def compute_idf_weights(documents):
     """
 
     collection_size = len(documents)
+    pool = Pool(processes=4)
+    documents = pool.map(unique, documents)
     flat_words = list(chain(*documents))
 
     doc_frequencies = dict(Counter(flat_words))
+    print(doc_frequencies, collection_size)
     idf_mapping = {term: np.log(float(collection_size) / doc_frequency) for term, doc_frequency in doc_frequencies.items()}
     return idf_mapping
 
-def compute_tf_weights(documents, processs = 1):
+def compute_tf_weights(documents, processs = 4):
     """
     Returns a mapping { term: tf_term }
     :param documents: list of documents in corpus
@@ -82,25 +88,7 @@ def compute_tf_weights(documents, processs = 1):
     for document in document_distributions:
         collection_distribution.update(document)  # { token: frequency }
     collection_distribution = dict(collection_distribution)
-    return collection_distribution
-
-def sampleSent(doc, tfidf, k = 5):
-    """
-    Returns top k sentences based on tf-idf scoring
-    :param doc: given document
-    :tfidf : dict with tfidf score for each word
-    :k : no of sentences to be returned
-    """
-
-    k = 5
-    doc = doc.split(".")
-    scores = []
-    for i, s in enumerate(doc):
-        total = sum([tfidf[w.lower().strip(string.punctuation)] for w in s.split() if w in tfidf])
-        scores.append([total, i])
-    
-    scores.sort(key = lambda x : x[0], reverse = True)
-    return ". ".join(doc[i].strip() for _, i in scores[:k])
+    return document_distributions
 
 def getTfidf(documents, processs = 4):
     """
@@ -121,8 +109,25 @@ def getTfidf(documents, processs = 4):
 
     tf_weights = compute_tf_weights(documents)
     idf_weights = compute_idf_weights(documents)
-    tfidf = {k : tf_weights[k]*idf_weights[k] for k in tf_weights}
+    tfidf = {k : tf_weights[k]*idf_weights[k] if k in tf_weights else 1e-7*idf_weights[k] for k in idf_weights}
     return tfidf
+
+def sampleSent(doc, tfidf, k = 5):
+    """
+    Returns top k sentences based on tf-idf scoring
+    :param doc: given document
+    :tfidf : dict with tfidf score for each word
+    :k : no of sentences to be returned
+    """
+
+    doc = doc.split(".")
+    scores = []
+    for i, s in enumerate(doc):
+        total = sum([tfidf[w.lower().strip(string.punctuation)] for w in s.split() if w in tfidf])
+        scores.append([total, i])
+    
+    scores.sort(key = lambda x : x[0], reverse = True)
+    return ". ".join(doc[i].strip() for _, i in scores[:k])
 
 def getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount, sample = True):
     """
@@ -149,8 +154,8 @@ if __name__ == '__main__':
 
     # Prepare italian CLEF data
     np.random.seed(123)
-    limit_documents = 1000
-    limit_queries = 10
+    limit_documents = None
+    limit_queries = None
     relDocsCount, nonRelDocsCount = 3, 10
 
     it_lastampa = (c.PATH_BASE_DOCUMENTS + "italian/la_stampa/", extract_italian_lastampa)
@@ -160,42 +165,47 @@ if __name__ == '__main__':
                "2002": [it_lastampa, it_sda94],
                "2003": [it_lastampa, it_sda94, it_sda95]}
 
-    processs, k = 4, 10
-
-
+    processs, k = 4, 20
+    _all = {"italian": italian}
+    docids, documents, qids, queries = [], [], [], []
+    docid2doc, qidtoq = {}, {}
     for year in c.YEARs:
         doc_dirs = _all["italian"][year]
         current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
-        docids, documents, qids, queries = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
-        docid2doc = {d:i for i, d in enumerate(docids)}
-        qidtoq    = {str(q):i for i, q in enumerate(qids)}
+        a1, b1, c1, d1 = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
+        docid2doc.update({d:i for i, d in enumerate(docids, len(docids))})
+        qidtoq.update({str(q):i for i, q in enumerate(qids, len(qids))})
+        docids.extend(a1)
+        documents.extend(b1)
+        qids.extend(c1)
+        queries.extend(d1)
+    
+    allDocs = set(docid2doc.keys())
+    tfidf = getTfidf(documents, processs)
+    pool = Pool(processes=processs)
+    subsetDocs = pool.starmap(sampleSent, zip(documents, repeat(tfidf), repeat(k)))
+    pool.close()
+    pool.join()
+    assert len(subsetDocs) == len(documents)
 
-        allDocs = set(docid2doc.keys())
-        tfidf = getTfidf(documents, processs)
-        pool = Pool(processes=processs)
-        subsetDocs = pool.starmap(sampleSent, zip(documents, repeat(tfidf), repeat(k)))
-        pool.close()
-        pool.join()
-        assert len(subsetDocs) == len(documents)
+    query2docs = defaultdict(list)
+    with open("out_%s"%year, "r") as f:
+        for line in f:
+            line = line.split()
+            query2docs[line[0][-2:]].append(line[2])
 
-        query2docs = defaultdict(list)
-        with open("out_%s"%year, "r") as f:
-            for line in f:
-                line = line.split()
-                query2docs[line[0][-2:]].append(line[2])
+    with open("data_%s.tsv"%year, "w") as f:
+        tsv_writer = csv.writer(f, delimiter='\t')
+        for qid, i in qidtoq.items():
+            if qid not in query2docs :
+                print("No relevance judgements available for query %s"%(qid))
+                continue
+            #add relevant documents
+            relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
+            for did in relDocs:
+                tsv_writer.writerow([str(1), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
 
-        with open("data_%s.tsv"%year, "w") as f:
-            tsv_writer = csv.writer(f, delimiter='\t')
-            for qid, i in qidtoq.items():
-                if qid not in query2docs :
-                    print("No relevance judgements available for query %s"%(qid))
-                    continue
-                #add relevant documents
-                relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
-                for did in relDocs:
-                    tsv_writer.writerow([str(1), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
-
-                #add nonrelevant documents
-                for did in nonRelDocs:
-                    tsv_writer.writerow([str(0), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
+            #add nonrelevant documents
+            for did in nonRelDocs:
+                tsv_writer.writerow([str(0), qid, did, queries[qidtoq[qid]], subsetDocs[docid2doc[did]]])
     
