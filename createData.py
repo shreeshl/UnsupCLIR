@@ -167,6 +167,8 @@ if __name__ == '__main__':
     
 
     # Prepare italian CLEF data
+    mode = "drmm"
+    load = True
     np.random.seed(123)
     limit_documents = None
     limit_queries = None
@@ -182,7 +184,7 @@ if __name__ == '__main__':
     processs, k = 4, 20
     _all = {"italian": italian}
     docids, documents, qids, queries = [], [], [], []
-    if mode == "run"
+    if not load
         for year in c.YEARs:
             doc_dirs = _all["italian"][year]
             current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
@@ -192,34 +194,43 @@ if __name__ == '__main__':
             qids.extend(c1)
             queries.extend(d1)
 
-        data = {"docids" : docids, "documents" : documents, "qids" : qids, "queries" : queries}
+        
+        pool = Pool(processes=processs)
+        clean_to_lower = partial(clean, to_lower=True)
+        documents = pool.map(clean_to_lower, documents)
+        pool.close()
+        pool.join()
+        queries = list(map(clean_to_lower, queries))
+        
+        tfidf = getTfidf(documents, processs)
+
+        docDict = defaultdict(str)
+        for i, doc in enumerate(documents):
+            docDict[docids[i]] += ". " + doc
+        
+        subsetDocs = list(docDict.items())
+        pool = Pool(processes=processs)
+        subsetDocs = pool.starmap(sampleSent, zip(subsetDocs, repeat(tfidf), repeat(k)))
+        pool.close()
+        pool.join()
+        subsetDocs = {did : doc for did, doc in subsetDocs if len(doc.strip())}
+        allDocs = set(subsetDocs.keys())
+
+        data = {"docids" : docids, "documents" : documents, "qids" : qids, "queries" : queries, "subsetDocs" : subsetDocs}
         p.dump(data, open("data.p", "wb"))
+
     else:
         data = p.load(open("data.p", "rb"))
-        docids, documents, qids, queries = data["docids"], data["documents"], data["qids"], data["queries"]
-
-    
-    allDocs = set(docids)
-    tfidf = getTfidf(documents, processs)
-
-    docDict = defaultdict(str)
-    for i, doc in enumerate(documents):
-        docDict[docids[i]] += ". " + doc[0]
-    
-    subsetDocs = list(docDict.items())
-    pool = Pool(processes=processs)
-    subsetDocs = pool.starmap(sampleSent, zip(subsetDocs, repeat(tfidf), repeat(k)))
-    pool.close()
-    pool.join()
-    subsetDocs = {did : doc for did, doc in subsetDocs}
+        docids, documents, qids, queries, subsetDocs = data["docids"], data["documents"], data["qids"], data["queries"], data["subsetDocs"]
 
     query2docs = defaultdict(list)
     with open("../out", "r") as f:
         for line in f:
             line = line.split()
-            query2docs[int(line[0])].append(line[2])
+            if line[2] in allDocs:
+                query2docs[int(line[0])].append(line[2])
 
-    with open("data.tsv", "w") as f:
+    with open("data_%s.tsv"%(mode), "w") as f:
         tsv_writer = csv.writer(f, delimiter='\t')
         for i, qid in enumerate(qids):
             if qid not in query2docs :
@@ -228,9 +239,14 @@ if __name__ == '__main__':
             #add relevant documents
             relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
             for did in relDocs:
-                tsv_writer.writerow([str(1), qid, did, queries[i], subsetDocs[did]])
+                if mode == "bert":
+                    tsv_writer.writerow([str(1), qid, did, queries[i], subsetDocs[did]])
+                else:
+                    tsv_writer.writerow([str(1), queries[i], subsetDocs[did]])
 
             #add nonrelevant documents
             for did in nonRelDocs:
-                tsv_writer.writerow([str(0), qid, did, queries[i], subsetDocs[did]])
-    
+                if mode == "bert":
+                    tsv_writer.writerow([str(0), qid, did, queries[i], subsetDocs[did]])
+                else:
+                    tsv_writer.writerow([str(0), queries[i], subsetDocs[did]])
