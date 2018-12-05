@@ -39,9 +39,12 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, rel
     doc_ids = []
     limit_reached = False
     for doc_dir, extractor in doc_dirs:
+        print(doc_dir)
         if not limit_reached:
             for root, dirs, files in os.walk(doc_dir):
+                print(root, files)
                 for file in files:
+                    if 'sda_italian_94' in root : print(file)
                     if '.DS' in file : continue
                     tmp_doc_ids, tmp_documents = load_clef_documents(os.path.join(root, file), extractor, limit_documents)
                     documents.extend(tmp_documents)
@@ -177,7 +180,7 @@ if __name__ == '__main__':
     relDocsCount, nonRelDocsCount = 50, 100
 
     it_lastampa = (c.PATH_BASE_DOCUMENTS + "italian/la_stampa/", extract_italian_lastampa)
-    it_sda94 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian_94/", extract_italian_sda9495)
+    it_sda94 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian/", extract_italian_sda9495)
     it_sda95 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian_95/", extract_italian_sda9495)
     italian = {"2001": [it_lastampa, it_sda94],
                "2002": [it_lastampa, it_sda94],

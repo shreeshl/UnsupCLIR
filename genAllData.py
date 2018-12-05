@@ -15,9 +15,9 @@ if __name__ == '__main__':
     # Prepare italian CLEF data
     limit_documents = None
     limit_queries = None
-    target_language = "italian"
+    target_language = "IT"
     it_lastampa = (c.PATH_BASE_DOCUMENTS + "italian/la_stampa/", extract_italian_lastampa)
-    it_sda94 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian_94/", extract_italian_sda9495)
+    it_sda94 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian/", extract_italian_sda9495)
     it_sda95 = (c.PATH_BASE_DOCUMENTS + "italian/sda_italian_95/", extract_italian_sda9495)
     italian = {"2001": [it_lastampa, it_sda94],
                "2002": [it_lastampa, it_sda94],
@@ -56,11 +56,13 @@ if __name__ == '__main__':
             tsv_writer = csv.writer(f, delimiter='\t')
             for i, qid in enumerate(qids):
                 for did in allDocs:
-                    tsv_writer.writerow([str(1), qid, did, queries[i], subsetDocs[did]])
+                    label = "1" if qid in relass and did in relass[qid] else "0"
+                    tsv_writer.writerow([label, qid, did, queries[i], subsetDocs[did]])
         
         with open("test_drmm_%s.tsv"%(year), "w") as f:
             tsv_writer = csv.writer(f, delimiter='\t')
             for i, qid in enumerate(qids):
                 for did in allDocs:
-                    tsv_writer.writerow([str(1), queries[i], subsetDocs[did]])
+                    label = "1" if qid in relass and did in relass[qid] else "0"
+                    tsv_writer.writerow([label, queries[i], subsetDocs[did]])
         print(year + " Finished")
