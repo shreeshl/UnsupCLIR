@@ -129,7 +129,7 @@ def sampleSent(doc, tfidf, k = 1000):
     """
 
     _id, doc = doc
-    doc = doc.split(".")
+    doc = doc.strip(string.punctuation).split(".")
     scores = []
     for i, s in enumerate(doc):
         total = sum([tfidf[w.lower().strip(" " + string.punctuation)] for w in s.split() if w in tfidf])
@@ -139,13 +139,13 @@ def sampleSent(doc, tfidf, k = 1000):
     out = []
     total = 0
     for _, i in scores:
-        if len(doc[i]) > k : continue
+        if len(doc[i]) > k: continue
         total += len(doc[i])
         if total <= k or len(out) == 0:
             out.append(doc[i].strip())
         else:
             break
-    
+    if len(out) == 0 : out.append(doc[scores[0][1]].strip())
     return _id, ". ".join(out)
 
 def getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount, sample = True):
