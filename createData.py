@@ -14,7 +14,7 @@ from collection_extractors import extract_italian_lastampa, extract_italian_sda9
 import constants as c
 from experiment_clef import _count_words
 from text2vec import clean
-from load_data import load_clef_documents, load_queries
+from load_data import load_clef_documents, load_queries, load_relevance_assessments
 import pickle as p
 
 def tokenize(doc):
@@ -23,7 +23,7 @@ def tokenize(doc):
     """
     return doc.split()
 
-def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, query_language = 'en'):
+def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, relevance_assessment_file = None, query_language = 'en'):
     """
     Loads documents, evaluation data and queries needed to run different experiments on CLEF data.
     :param doc_dirs: directories containing the corpora for a specific CLEF campaign
@@ -50,9 +50,11 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, que
                         limit_reached = True
                         break
 
+    if relevance_assessment_file:
+        relass = load_relevance_assessments(relevance_assessment_file)
     query_ids, queries = load_queries(query_file, language_tag=query_language, limit=limit_queries)
     # print("Documents loaded %s" % (timer.pprint_lap()))
-    return doc_ids, documents, query_ids, queries
+    return doc_ids, documents, query_ids, queries, relass if relevance_assessment_file else None
 
 def unique(document):
 
@@ -120,7 +122,7 @@ def sampleSent(doc, tfidf, k = 1000):
     Returns top k sentences based on tf-idf scoring
     :param doc: given (docid, document)
     :tfidf : dict with tfidf score for each word
-    :k : no of sentences to be returned
+    :k : maximum total words in the returned sentences
     """
 
     _id, doc = doc
@@ -184,11 +186,11 @@ if __name__ == '__main__':
     processs, k = 4, 20
     _all = {"italian": italian}
     docids, documents, qids, queries = [], [], [], []
-    if not load
+    if not load:
         for year in c.YEARs:
             doc_dirs = _all["italian"][year]
             current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
-            a1, b1, c1, d1 = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
+            a1, b1, c1, d1, _ = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
             docids.extend(a1)
             documents.extend(b1)
             qids.extend(c1)
