@@ -10,7 +10,7 @@ from functools import partial
 from itertools import compress
 from collections import Counter, defaultdict
 from multiprocessing.pool import Pool
-from collection_extractors import extract_italian_lastampa, extract_italian_sda9495
+from collection_extractors import extract_italian_lastampa, extract_italian_sda9495, extract_finish_aamuleth9495
 import constants as c
 from experiment_clef import _count_words
 from text2vec import clean
@@ -39,10 +39,8 @@ def prepare_experiment(doc_dirs, limit_documents, query_file, limit_queries, rel
     doc_ids = []
     limit_reached = False
     for doc_dir, extractor in doc_dirs:
-        print(doc_dir)
         if not limit_reached:
             for root, dirs, files in os.walk(doc_dir):
-                print(root, files)
                 for file in files:
                     if 'sda_italian_94' in root : print(file)
                     if '.DS' in file : continue
@@ -145,7 +143,7 @@ def sampleSent(doc, tfidf, k = 1000):
             out.append(doc[i].strip())
         else:
             break
-    if len(out) == 0 : out.append(doc[scores[0][1]].strip())
+    if len(out) == 0 : out.append(doc[scores[0][1]].strip()[:1000])
     return _id, ". ".join(out)
 
 def getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount, sample = True):
@@ -172,8 +170,8 @@ if __name__ == '__main__':
     
 
     # Prepare italian CLEF data
-    mode = "drmm"
-    load = True
+    # mode = "drmm"
+    load = False
     np.random.seed(123)
     limit_documents = None
     limit_queries = None
@@ -186,12 +184,16 @@ if __name__ == '__main__':
                "2002": [it_lastampa, it_sda94],
                "2003": [it_lastampa, it_sda94, it_sda95]}
 
-    processs, k = 4, 20
-    _all = {"italian": italian}
+    aamu9495 = c.PATH_BASE_DOCUMENTS + "finnish/aamu/"
+    fi_ammulethi9495 = (aamu9495, extract_finish_aamuleth9495)
+    finnish = {"2001": None, "2002": [fi_ammulethi9495], "2003": [fi_ammulethi9495]}
+
+    processs, k = 4, 1000
+    _all = {"finnish": finnish}
     docids, documents, qids, queries = [], [], [], []
     if not load:
-        for year in c.YEARs:
-            doc_dirs = _all["italian"][year]
+        for year in c.YEARs[1:]:
+            doc_dirs = _all["finnish"][year]
             current_path_queries = c.PATH_BASE_QUERIES + year + "/Top-en" + year[-2:] + ".txt"
             a1, b1, c1, d1, _ = prepare_experiment(doc_dirs, limit_documents, current_path_queries, limit_queries)
             docids.extend(a1)
@@ -199,7 +201,8 @@ if __name__ == '__main__':
             qids.extend(c1)
             queries.extend(d1)
 
-        
+        print("===> Data Loaded")
+        print(len(documents), len(queries))
         pool = Pool(processes=processs)
         clean_to_lower = partial(clean, to_lower=True)
         documents = pool.map(clean_to_lower, documents)
@@ -220,10 +223,11 @@ if __name__ == '__main__':
         pool.join()
         subsetDocs = {did : doc for did, doc in subsetDocs if len(doc.strip())}
         allDocs = set(subsetDocs.keys())
-
+        
         data = {"docids" : docids, "documents" : documents, "qids" : qids, "queries" : queries, "subsetDocs" : subsetDocs}
         p.dump(data, open("data.p", "wb"))
-
+        p.dump(tfidf, open("tfidf.p", "wb"))
+        print("===> Data Processed")
     else:
         data = p.load(open("data.p", "rb"))
         docids, documents, qids, queries, subsetDocs = data["docids"], data["documents"], data["qids"], data["queries"], data["subsetDocs"]
@@ -234,8 +238,8 @@ if __name__ == '__main__':
             line = line.split()
             if line[2] in allDocs:
                 query2docs[int(line[0])].append(line[2])
-
-    with open("data_%s.tsv"%(mode), "w") as f:
+    print("===> Saving Files")
+    with open("train.tsv", "w") as f:
         tsv_writer = csv.writer(f, delimiter='\t')
         for i, qid in enumerate(qids):
             if qid not in query2docs :
@@ -244,14 +248,23 @@ if __name__ == '__main__':
             #add relevant documents
             relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
             for did in relDocs:
-                if mode == "bert":
-                    tsv_writer.writerow([str(1), qid, did, queries[i], subsetDocs[did]])
-                else:
-                    tsv_writer.writerow([str(1), queries[i], subsetDocs[did]])
+                tsv_writer.writerow([str(1), qid, did, queries[i], subsetDocs[did]])
+                
+            #add nonrelevant documents
+            for did in nonRelDocs:
+                tsv_writer.writerow([str(0), qid, did, queries[i], subsetDocs[did]])
+    
+    with open("train_drmm.tsv", "w") as f:
+        tsv_writer = csv.writer(f, delimiter='\t')
+        for i, qid in enumerate(qids):
+            if qid not in query2docs :
+                print("No relevance judgements available for query %s"%(qid))
+                continue
+            #add relevant documents
+            relDocs, nonRelDocs = getDocs(qid, query2docs, allDocs, relDocsCount, nonRelDocsCount)
+            for did in relDocs:
+                tsv_writer.writerow([str(1), queries[i], subsetDocs[did]])
 
             #add nonrelevant documents
             for did in nonRelDocs:
-                if mode == "bert":
-                    tsv_writer.writerow([str(0), qid, did, queries[i], subsetDocs[did]])
-                else:
-                    tsv_writer.writerow([str(0), queries[i], subsetDocs[did]])
+                tsv_writer.writerow([str(0), queries[i], subsetDocs[did]])
